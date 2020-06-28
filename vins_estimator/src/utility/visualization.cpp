@@ -20,7 +20,7 @@ ros::Publisher pub_camera_pose_visual;
 nav_msgs::Path path;
 
 ros::Publisher pub_keyframe_pose;
-ros::Publisher pub_keyframe_point;
+ros::Publisher pub_keyframe_point; //!< 重建出来的特征点
 ros::Publisher pub_extrinsic;
 
 ros::Publisher pub_image_track;
@@ -121,6 +121,9 @@ void printStatistics(const Estimator &estimator, double t)
         ROS_INFO("td %f", estimator.td);
 }
 
+/**
+ * @brief pubOdometry 当前帧位姿
+ */
 void pubOdometry(const Estimator &estimator, const std_msgs::Header &header)
 {
     if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
@@ -175,6 +178,9 @@ void pubOdometry(const Estimator &estimator, const std_msgs::Header &header)
     }
 }
 
+/**
+ * @brief pubKeyPoses 滑窗中的关键帧位姿
+ */
 void pubKeyPoses(const Estimator &estimator, const std_msgs::Header &header)
 {
     if (estimator.key_poses.size() == 0)
@@ -385,6 +391,7 @@ void pubKeyframe(const Estimator &estimator)
         for (auto &it_per_id : estimator.f_manager.feature)
         {
             int frame_size = it_per_id.feature_per_frame.size();
+            // 为即将被marg out的重建的3d特征点计算全局位置, 并publish出去
             if(it_per_id.start_frame < WINDOW_SIZE - 2 && it_per_id.start_frame + frame_size - 1 >= WINDOW_SIZE - 2 && it_per_id.solve_flag == 1)
             {
 

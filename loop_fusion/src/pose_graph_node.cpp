@@ -81,7 +81,7 @@ void new_sequence()
     if (sequence > 5)
     {
         ROS_WARN("only support 5 sequences since it's boring to copy code for more sequences.");
-        ROS_BREAK();
+        ROS_BREAK(); // 中断
     }
     posegraph.posegraph_visualization->reset();
     posegraph.publish();
@@ -199,6 +199,7 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
     vio_q.y() = pose_msg->pose.pose.orientation.y;
     vio_q.z() = pose_msg->pose.pose.orientation.z;
 
+    // 转换到图优化后的坐标系下
     vio_t = posegraph.w_r_vio * vio_t + posegraph.w_t_vio;
     vio_q = posegraph.w_r_vio *  vio_q;
 
@@ -217,6 +218,7 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
     odometry.pose.pose.orientation.w = vio_q.w();
     pub_odometry_rect.publish(odometry);
 
+    // 相机位姿
     Vector3d vio_t_cam;
     Quaterniond vio_q_cam;
     vio_t_cam = vio_t + vio_q * tic;
@@ -478,11 +480,14 @@ int main(int argc, char **argv)
         load_flag = 1;
     }
 
+    // 将数据缓存到buffer
     ros::Subscriber sub_vio = n.subscribe("/vins_estimator/odometry", 2000, vio_callback);
     ros::Subscriber sub_image = n.subscribe(IMAGE_TOPIC, 2000, image_callback);
     ros::Subscriber sub_pose = n.subscribe("/vins_estimator/keyframe_pose", 2000, pose_callback);
+    // 更新外参
     ros::Subscriber sub_extrinsic = n.subscribe("/vins_estimator/extrinsic", 2000, extrinsic_callback);
     ros::Subscriber sub_point = n.subscribe("/vins_estimator/keyframe_point", 2000, point_callback);
+    // 显示即将被marg out的3d特征点
     ros::Subscriber sub_margin_point = n.subscribe("/vins_estimator/margin_cloud", 2000, margin_point_callback);
 
     pub_match_img = n.advertise<sensor_msgs::Image>("match_image", 1000);

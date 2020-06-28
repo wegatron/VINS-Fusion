@@ -110,12 +110,13 @@ class Estimator
     MarginalizationFlag  marginalization_flag;
     Vector3d g;
 
-    Matrix3d ric[2];
-    Vector3d tic[2];
+    Matrix3d ric[2]; //!< camera to imu rotation
+    Vector3d tic[2]; //!< camera to imu translation
 
-    Vector3d        Ps[(WINDOW_SIZE + 1)];
-    Vector3d        Vs[(WINDOW_SIZE + 1)];
-    Matrix3d        Rs[(WINDOW_SIZE + 1)];
+    // ?[WINDOW_SIZE] 表示当前最新帧的位姿
+    Vector3d        Ps[(WINDOW_SIZE + 1)]; //!< imu pos
+    Vector3d        Vs[(WINDOW_SIZE + 1)]; //!< imu velocity
+    Matrix3d        Rs[(WINDOW_SIZE + 1)]; //!< imu rotation
     Vector3d        Bas[(WINDOW_SIZE + 1)];
     Vector3d        Bgs[(WINDOW_SIZE + 1)];
     double td;

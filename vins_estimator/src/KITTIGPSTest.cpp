@@ -76,7 +76,7 @@ int main(int argc, char** argv)
 		if(file == NULL){
 		    printf("cannot find file: %soxts/timestamps.txt \n", dataPath.c_str());
 		    ROS_BREAK();
-		    return 0;          
+		    return 0;
 		}
 		int year, month, day;
 		int hour, minute;
@@ -102,14 +102,14 @@ int main(int argc, char** argv)
 	double baseTime;
 
 	for (size_t i = 0; i < imageTimeList.size(); i++)
-	{	
+	{
 		if(ros::ok())
 		{
 			if(imageTimeList[0] < GPSTimeList[0])
 				baseTime = imageTimeList[0];
 			else
 				baseTime = GPSTimeList[0];
-			
+
 			//printf("base time is %f\n", baseTime);
 			printf("process image %d\n", (int)i);
 			stringstream ss;

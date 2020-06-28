@@ -132,6 +132,16 @@ void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vector
     g = g0;
 }
 
+/**
+ * @brief       计算尺度，重力加速度和速度
+ * @optional    速度、重力向量和尺度初始化Paper -> V-B-2
+ *              相邻帧之间的位置和速度与IMU预积分出来的位置和速度对齐，求解最小二乘
+ *              重力细化 -> Paper V-B-3
+ * @param[in]   all_image_frame 所有图像帧构成的map,图像帧保存了位姿，预积分量和关于角点的信息
+ * @param[out]  g 重力加速度
+ * @param[out]  x 待优化变量，窗口中每帧的速度V[0:n]、重力g、尺度s
+ * @return      void
+*/
 bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x)
 {
     int all_frame_count = all_image_frame.size();

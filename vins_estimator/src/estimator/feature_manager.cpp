@@ -61,9 +61,10 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     long_track_num = 0;
     for (auto &id_pts : image)
     {
+        // one feature point in current frame
         FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
         assert(id_pts.second[0].first == 0);
-        if(id_pts.second.size() == 2)
+        if(id_pts.second.size() == 2) // two camera
         {
             f_per_fra.rightObservation(id_pts.second[1].second);
             assert(id_pts.second[1].first == 1);
@@ -92,13 +93,16 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
 
     //if (frame_count < 2 || last_track_num < 20)
     //if (frame_count < 2 || last_track_num < 20 || new_feature_num > 0.5 * last_track_num)
+
+    // first or second frame or old feature points in tracking is less than threshold
+    // or new frature points is greatter than threshold current frame is key frame
     if (frame_count < 2 || last_track_num < 20 || long_track_num < 40 || new_feature_num > 0.5 * last_track_num)
         return true;
 
     for (auto &it_per_id : feature)
     {
-        if (it_per_id.start_frame <= frame_count - 2 &&
-            it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1)
+        if (it_per_id.start_frame <= frame_count - 2 && // tracked more than 2 frame
+            it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1) // tracked by current frame
         {
             parallax_sum += compensatedParallax2(it_per_id, frame_count);
             parallax_num++;
@@ -109,7 +113,7 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     {
         return true;
     }
-    else
+    else // parallax is bigger than threshold, current frame is key frame
     {
         ROS_DEBUG("parallax_sum: %lf, parallax_num: %d", parallax_sum, parallax_num);
         ROS_DEBUG("current parallax: %lf", parallax_sum / parallax_num * FOCAL_LENGTH);
@@ -152,13 +156,16 @@ void FeatureManager::setDepth(const VectorXd &x)
         //ROS_INFO("feature id %d , start_frame %d, depth %f ", it_per_id->feature_id, it_per_id-> start_frame, it_per_id->estimated_depth);
         if (it_per_id.estimated_depth < 0)
         {
-            it_per_id.solve_flag = 2;
+            it_per_id.solve_flag = 2; // 该feature计算有问题(失败), 后续会在FeatureManager::removeFailures中被移除
         }
         else
             it_per_id.solve_flag = 1;
     }
 }
 
+/**
+ * @brief FeatureManager::removeFailures 剔除feature中估计失败的点（solve_flag == 2）
+ */
 void FeatureManager::removeFailures()
 {
     for (auto it = feature.begin(), it_next = feature.begin();
@@ -350,9 +357,9 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
             int imu_i = it_per_id.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose;
             Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
-            Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+            Eigen::Matrix3d R0 = Rs[imu_i] * ric[0]; // camera to world
             leftPose.leftCols<3>() = R0.transpose();
-            leftPose.rightCols<1>() = -R0.transpose() * t0;
+            leftPose.rightCols<1>() = -R0.transpose() * t0; // world to camera frame i
 
             imu_i++;
             Eigen::Matrix<double, 3, 4> rightPose;
@@ -447,6 +454,8 @@ void FeatureManager::removeOutlier(set<int> &outlierIndex)
     }
 }
 
+//边缘化最老帧时，处理特征点保存的帧号，将起始帧是最老帧的特征点的深度值进行转移
+//marg_R、marg_P为被边缘化的位姿，new_R、new_P为在这下一帧的位姿
 void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P)
 {
     for (auto it = feature.begin(), it_next = feature.begin();
@@ -460,12 +469,12 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
         {
             Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  
             it->feature_per_frame.erase(it->feature_per_frame.begin());
-            if (it->feature_per_frame.size() < 2)
+            if (it->feature_per_frame.size() < 2) // 启始帧是最老帧, 删除feature
             {
                 feature.erase(it);
                 continue;
             }
-            else
+            else // 将depth转移到第0帧
             {
                 Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
                 Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;

@@ -223,7 +223,9 @@ void Estimator::inputFeature(double t, const map<int, vector<pair<int, Eigen::Ma
         processMeasurements();
 }
 
-
+/**
+ * @brief get imu data between t0 and t1
+ */
 bool Estimator::getIMUInterval(double t0, double t1, vector<pair<double, Eigen::Vector3d>> &accVector, 
                                 vector<pair<double, Eigen::Vector3d>> &gyrVector)
 {
@@ -259,6 +261,9 @@ bool Estimator::getIMUInterval(double t0, double t1, vector<pair<double, Eigen::
     return true;
 }
 
+/**
+ * @brief check if there is imu data come after time t
+ */
 bool Estimator::IMUAvailable(double t)
 {
     if(!accBuf.empty() && t <= accBuf.back().first)
@@ -308,7 +313,7 @@ void Estimator::processMeasurements()
                     if(i == 0)
                         dt = accVector[i].first - prevTime;
                     else if (i == accVector.size() - 1)
-                        dt = curTime - accVector[i - 1].first;
+                        dt = curTime - accVector[i - 1].first; // camera frame time to pre imu time
                     else
                         dt = accVector[i].first - accVector[i - 1].first;
                     processIMU(accVector[i].first, dt, accVector[i].second, gyrVector[i].second);
@@ -341,7 +346,9 @@ void Estimator::processMeasurements()
     }
 }
 
-
+/**
+ * @brief calculate imu init R(pitch, roll), by the first imu sequence, align to g
+ */
 void Estimator::initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector)
 {
     printf("init first imu pose\n");
@@ -371,7 +378,9 @@ void Estimator::initFirstPose(Eigen::Vector3d p, Eigen::Matrix3d r)
     initR = r;
 }
 
-
+/**
+ * @brief do imu preintegration and imu integration up date pose
+ */
 void Estimator::processIMU(double t, double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
 {
     if (!first_imu)
@@ -395,11 +404,11 @@ void Estimator::processIMU(double t, double dt, const Vector3d &linear_accelerat
         linear_acceleration_buf[frame_count].push_back(linear_acceleration);
         angular_velocity_buf[frame_count].push_back(angular_velocity);
 
-        int j = frame_count;         
-        Vector3d un_acc_0 = Rs[j] * (acc_0 - Bas[j]) - g;
+        int j = frame_count;
+        Vector3d un_acc_0 = Rs[j] * (acc_0 - Bas[j]) - g; // acc in global axis pre
         Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity) - Bgs[j];
         Rs[j] *= Utility::deltaQ(un_gyr * dt).toRotationMatrix();
-        Vector3d un_acc_1 = Rs[j] * (linear_acceleration - Bas[j]) - g;
+        Vector3d un_acc_1 = Rs[j] * (linear_acceleration - Bas[j]) - g; // acc in global axis current
         Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
         Ps[j] += dt * Vs[j] + 0.5 * dt * dt * un_acc;
         Vs[j] += dt * un_acc;
@@ -408,6 +417,11 @@ void Estimator::processIMU(double t, double dt, const Vector3d &linear_accelerat
     gyr_0 = angular_velocity; 
 }
 
+/**
+ * @brief process one frame of image
+ * @param image tracked feature id --> feature info in cameras
+ * @param header timestamp
+ */
 void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, const double header)
 {
     ROS_DEBUG("new image coming ------------------------------------------");
@@ -630,6 +644,7 @@ bool Estimator::initialStructure()
     Matrix3d relative_R;
     Vector3d relative_T;
     int l;
+    // 最新帧(frame_count)和窗口中的第l帧有足够大的视差, 且2D-2D计算RT成功
     if (!relativePose(relative_R, relative_T, l))
     {
         ROS_INFO("Not enough features or parallax; Move device around");
@@ -638,7 +653,7 @@ bool Estimator::initialStructure()
     GlobalSFM sfm;
     if(!sfm.construct(frame_count + 1, Q, T, l,
               relative_R, relative_T,
-              sfm_f, sfm_tracked_points))
+              sfm_f, sfm_tracked_points)) // 根据相对位姿做3D重建
     {
         ROS_DEBUG("global SFM failed!");
         marginalization_flag = MARGIN_OLD;
@@ -723,6 +738,13 @@ bool Estimator::initialStructure()
 
 }
 
+/**
+ * @brief   视觉惯性联合初始化
+ * @Description 陀螺仪的偏置校准(加速度偏置没有处理) 计算速度V[0:n] 重力g 尺度s
+ *              更新了Bgs后，IMU测量量需要repropagate
+ *              得到尺度s和重力g的方向后，需更新所有图像帧在世界坐标系下的Ps、Rs、Vs
+ * @return  bool true：成功
+ */
 bool Estimator::visualInitialAlign()
 {
     TicToc t_g;
@@ -955,11 +977,14 @@ void Estimator::double2vector()
 bool Estimator::failureDetection()
 {
     return false;
+    //在最新帧中跟踪的特征数小于某一阈值
     if (f_manager.last_track_num < 2)
     {
         ROS_INFO(" little feature %d", f_manager.last_track_num);
         //return true;
     }
+
+    //偏置或外部参数估计有较大的变化
     if (Bas[WINDOW_SIZE].norm() > 2.5)
     {
         ROS_INFO(" big IMU acc bias estimation %f", Bas[WINDOW_SIZE].norm());
@@ -977,6 +1002,7 @@ bool Estimator::failureDetection()
         return true;
     }
     */
+    //最近两个估计器输出之间的位置或旋转有较大的不连续性
     Vector3d tmp_P = Ps[WINDOW_SIZE];
     if ((tmp_P - last_P).norm() > 5)
     {
@@ -1001,6 +1027,13 @@ bool Estimator::failureDetection()
     return false;
 }
 
+/**
+ * @brief       基于滑动窗口紧耦合的非线性优化，残差项的构造和求解
+ * @Description 添加要优化的变量 (p,v,q,ba,bg) 一共15个自由度，IMU的外参也可以加进来
+ *              添加残差，残差项分为4块 先验残差+IMU残差+视觉残差+闭环检测残差
+ *              根据倒数第二帧是不是关键帧确定边缘化的结果
+ * @return      void
+*/
 void Estimator::optimization()
 {
     TicToc t_whole, t_prepare;
@@ -1014,7 +1047,7 @@ void Estimator::optimization()
     //ceres::LossFunction* loss_function = new ceres::HuberLoss(1.0);
     for (int i = 0; i < frame_count + 1; i++)
     {
-        ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
+        ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization(); //???
         problem.AddParameterBlock(para_Pose[i], SIZE_POSE, local_parameterization);
         if(USE_IMU)
             problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
@@ -1339,7 +1372,7 @@ void Estimator::slideWindow()
             for (int i = 0; i < WINDOW_SIZE; i++)
             {
                 Headers[i] = Headers[i + 1];
-                Rs[i].swap(Rs[i + 1]);
+                Rs[i].swap(Rs[i + 1]); // swap更快
                 Ps[i].swap(Ps[i + 1]);
                 if(USE_IMU)
                 {
@@ -1390,7 +1423,7 @@ void Estimator::slideWindow()
             Ps[frame_count - 1] = Ps[frame_count];
             Rs[frame_count - 1] = Rs[frame_count];
 
-            if(USE_IMU)
+            if(USE_IMU) // IMU数据预积分加到上一帧上
             {
                 for (unsigned int i = 0; i < dt_buf[frame_count].size(); i++)
                 {
@@ -1416,7 +1449,7 @@ void Estimator::slideWindow()
                 linear_acceleration_buf[WINDOW_SIZE].clear();
                 angular_velocity_buf[WINDOW_SIZE].clear();
             }
-            slideWindowNew();
+            slideWindowNew(); // 删除feature点
         }
     }
 }
@@ -1436,6 +1469,8 @@ void Estimator::slideWindowOld()
     {
         Matrix3d R0, R1;
         Vector3d P0, P1;
+        //back_R0、back_P0为窗口中最老帧的位姿
+        //Rs、Ps为滑动窗口后第0帧的位姿，即原来的第1帧
         R0 = back_R0 * ric[0];
         R1 = Rs[0] * ric[0];
         P0 = back_P0 + back_R0 * tic[0];
@@ -1496,6 +1531,9 @@ void Estimator::predictPtsInNextFrame()
     //printf("estimator output %d predict pts\n",(int)predictPts.size());
 }
 
+/**
+ * @brief Estimator::reprojectionError 归一化平面上的重投影误差
+ */
 double Estimator::reprojectionError(Matrix3d &Ri, Vector3d &Pi, Matrix3d &rici, Vector3d &tici,
                                  Matrix3d &Rj, Vector3d &Pj, Matrix3d &ricj, Vector3d &ticj, 
                                  double depth, Vector3d &uvi, Vector3d &uvj)
@@ -1583,6 +1621,9 @@ void Estimator::fastPredictIMU(double t, Eigen::Vector3d linear_acceleration, Ei
     latest_gyr_0 = angular_velocity;
 }
 
+/**
+ * @brief Estimator::updateLatestStates 根据视觉定位后, 根据后续IMU数据推导机器人最新的位姿
+ */
 void Estimator::updateLatestStates()
 {
     mPropagate.lock();

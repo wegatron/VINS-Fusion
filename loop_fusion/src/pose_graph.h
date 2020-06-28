@@ -60,11 +60,11 @@ public:
 	void savePoseGraph();
 	void loadPoseGraph();
 	void publish();
-	Vector3d t_drift;
-	double yaw_drift;
-	Matrix3d r_drift;
+    Vector3d t_drift; //!< x,y,z漂移
+    double yaw_drift; //!< yaw角度的漂移(pitch, roll可观)
+    Matrix3d r_drift; //!< 旋转漂移
 	// world frame( base sequence or first sequence)<----> cur sequence frame  
-	Vector3d w_t_vio;
+    Vector3d w_t_vio; //!< ??? @TODO 零空间的处理 ???, 为什么重建的特征点不需要w_t
 	Matrix3d w_r_vio;
 
 

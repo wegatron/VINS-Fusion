@@ -157,6 +157,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 	Pose[l].block<3, 3>(0, 0) = c_Rotation[l];
 	Pose[l].block<3, 1>(0, 3) = c_Translation[l];
 
+    // l to frame_num-1
 	c_Quat[frame_num - 1] = q[frame_num - 1].inverse();
 	c_Rotation[frame_num - 1] = c_Quat[frame_num - 1].toRotationMatrix();
 	c_Translation[frame_num - 1] = -1 * (c_Rotation[frame_num - 1] * T[frame_num - 1]);

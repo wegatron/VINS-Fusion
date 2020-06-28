@@ -52,6 +52,9 @@ FeatureTracker::FeatureTracker()
     hasPrediction = false;
 }
 
+/**
+ * @brief mask out tracked feature points
+ */
 void FeatureTracker::setMask()
 {
     mask = cv::Mat(row, col, CV_8UC1, cv::Scalar(255));
@@ -153,6 +156,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         for (int i = 0; i < int(cur_pts.size()); i++)
             if (status[i] && !inBorder(cur_pts[i]))
                 status[i] = 0;
+        // 只保留追踪上的点
         reduceVector(prev_pts, status);
         reduceVector(cur_pts, status);
         reduceVector(ids, status);
@@ -161,10 +165,10 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         //printf("track cnt %d\n", (int)ids.size());
     }
 
-    for (auto &n : track_cnt)
+    for (auto &n : track_cnt) // 特征点追踪到的次数
         n++;
 
-    if (1)
+    if (1) // add new feature points for track
     {
         //rejectWithF();
         ROS_DEBUG("set mask begins");
@@ -196,8 +200,8 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         //printf("feature cnt after add %d\n", (int)ids.size());
     }
 
-    cur_un_pts = undistortedPts(cur_pts, m_camera[0]);
-    pts_velocity = ptsVelocity(ids, cur_un_pts, cur_un_pts_map, prev_un_pts_map);
+    cur_un_pts = undistortedPts(cur_pts, m_camera[0]); // 去畸变
+    pts_velocity = ptsVelocity(ids, cur_un_pts, cur_un_pts_map, prev_un_pts_map); // 归一化平面上的速度
 
     if(!_img1.empty() && stereo_cam)
     {
